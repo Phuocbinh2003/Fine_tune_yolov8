@@ -1,5 +1,5 @@
 streamlit
-ultralytics==8.0.178
+ultralytics>= 8.0.170
 opencv-python-headless
 pillow
 matplotlib
