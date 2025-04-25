@@ -1,114 +1,94 @@
 import os
+import zipfile
 import streamlit as st
 from ultralytics import YOLO
 import cv2
 from PIL import Image
 
-# --- Sidebar Configuration ---
-st.sidebar.title("Fine-tune YOLO on Streamlit with Upload/Download")
+st.sidebar.title("🔧 Fine-tune YOLOv8")
 
 # Upload model
-uploaded_model = st.sidebar.file_uploader("Upload pretrained model (.pt)", type=["pt"])
-MODEL_PATH = None
-if uploaded_model:
-    MODEL_PATH = os.path.join("./uploads", uploaded_model.name)
-    os.makedirs("./uploads", exist_ok=True)
-    with open(MODEL_PATH, "wb") as f:
-        f.write(uploaded_model.getbuffer())
-    st.sidebar.success(f"Model saved to {MODEL_PATH}")
+model_file = st.sidebar.file_uploader("Upload pretrained YOLOv8 model (.pt)", type=["pt"])
+if model_file:
+    os.makedirs("uploads", exist_ok=True)
+    model_path = os.path.join("uploads", model_file.name)
+    with open(model_path, "wb") as f:
+        f.write(model_file.getbuffer())
+    st.sidebar.success("Model uploaded.")
 
-# Upload images
-uploaded_images = st.sidebar.file_uploader(
-    "Upload images for annotation", type=["jpg", "png", "jpeg"], accept_multiple_files=True
-)
-IMG_DIR = "./uploads/images"
-if uploaded_images:
-    os.makedirs(IMG_DIR, exist_ok=True)
-    for img in uploaded_images:
-        img_path = os.path.join(IMG_DIR, img.name)
-        with open(img_path, "wb") as f:
-            f.write(img.getbuffer())
-    st.sidebar.success(f"Saved {len(uploaded_images)} images.")
+# Upload image dataset (zip)
+zip_file = st.sidebar.file_uploader("Upload image dataset (.zip)", type=["zip"])
+img_dir = "uploads/images"
+if zip_file:
+    os.makedirs(img_dir, exist_ok=True)
+    with zipfile.ZipFile(zip_file, "r") as zip_ref:
+        zip_ref.extractall(img_dir)
+    st.sidebar.success("Images extracted.")
 
-# Label output directory
-temp_labels_dir = st.sidebar.text_input("Labels output directory", "./uploads/labels_temp")
-os.makedirs(temp_labels_dir, exist_ok=True)
+# Params
+epochs = st.sidebar.number_input("Epochs", 1, value=5)
+batch_size = st.sidebar.number_input("Batch Size", 1, value=16)
+img_size = st.sidebar.number_input("Image Size", 32, value=640)
+label_dir = "uploads/labels"
+project_dir = "fine_tune"
+run_name = "run"
 
-# Training parameters
-epochs = st.sidebar.number_input("Epochs", min_value=1, value=5)
-batch_size = st.sidebar.number_input("Batch size", min_value=1, value=16)
-img_size = st.sidebar.number_input("Image size", min_value=32, value=640)
-project_dir = st.sidebar.text_input("Project directory for output", "./fine_tune")
-run_name = st.sidebar.text_input("Run name", "run")
+os.makedirs(label_dir, exist_ok=True)
 
-# Load model & images button
-if st.sidebar.button("Load Model & Images"):
-    if not MODEL_PATH:
-        st.sidebar.error("Please upload a .pt model first.")
+# Load button
+if st.sidebar.button("Load"):
+    if not model_file or not zip_file:
+        st.sidebar.error("Please upload model and dataset.")
     else:
-        # Load model
-        st.session_state['model'] = YOLO(MODEL_PATH)
-        # List images
-        imgs = []
-        if os.path.isdir(IMG_DIR):
-            imgs = [f for f in os.listdir(IMG_DIR) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
-        st.session_state['images'] = imgs
+        st.session_state['model'] = YOLO(model_path)
+        st.session_state['images'] = [f for f in os.listdir(img_dir) if f.lower().endswith(('jpg', 'png', 'jpeg'))]
         st.session_state['idx'] = 0
-        st.sidebar.success(f"Loaded model and {len(imgs)} images.")
+        st.success("Model & Images loaded.")
 
-# Helper: draw boxes
-def draw_boxes_on_image(img_path, result):
+# Draw box
+def draw_boxes(img_path, result):
     img = cv2.imread(img_path)
     for box in result.boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-# Interactive annotation
+# Annotation flow
 if 'images' in st.session_state:
     idx = st.session_state['idx']
-    images = st.session_state['images']
-    if idx < len(images):
-        img_name = images[idx]
-        img_path = os.path.join(IMG_DIR, img_name)
-        model = st.session_state['model']
-        result = model.predict(img_path, conf=0.3)[0]
-        annotated = draw_boxes_on_image(img_path, result)
-        st.image(annotated, caption=img_name, use_column_width=True)
-        st.write(f"Image {idx+1}/{len(images)}")
+    imgs = st.session_state['images']
+    if idx < len(imgs):
+        name = imgs[idx]
+        path = os.path.join(img_dir, name)
+        result = st.session_state['model'].predict(path, conf=0.3)[0]
+        vis = draw_boxes(path, result)
+        st.image(vis, caption=name, use_column_width=True)
+
         col1, col2 = st.columns(2)
-        if col1.button("Đúng", key=f"correct_{idx}"):
-            lbl_path = os.path.join(temp_labels_dir, img_name.rsplit('.',1)[0] + '.txt')
-            with open(lbl_path, 'a') as f:
+        if col1.button("✅ Đúng", key=f"ok_{idx}"):
+            with open(os.path.join(label_dir, name.rsplit('.',1)[0]+'.txt'), 'a') as f:
                 for box in result.boxes:
                     cls_id = int(box.cls[0])
                     xc, yc, w, h = box.xywhn[0].tolist()
                     f.write(f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}\n")
-            st.success(f"Saved labels for {img_name}")
             st.session_state['idx'] += 1
             st.experimental_rerun()
-        if col2.button("Sai", key=f"wrong_{idx}"):
-            st.info(f"Skipped {img_name}")
+        if col2.button("❌ Sai", key=f"skip_{idx}"):
             st.session_state['idx'] += 1
             st.experimental_rerun()
     else:
-        st.balloons()
-        st.success("Annotation completed.")
-        # Generate data.yaml
-        data_yaml = os.path.join(project_dir, run_name, 'data.yaml')
-        os.makedirs(os.path.dirname(data_yaml), exist_ok=True)
-        with open(data_yaml, 'w') as f:
-            f.write(f"""
-train: {IMG_DIR}
-val: {IMG_DIR}
-nc: 1
-names: ['BIB']
-""")
-        st.write(f"Generated data.yaml at {data_yaml}")
-        if st.button("Bắt đầu huấn luyện"):
-            with st.spinner("Training in progress..."):
+        st.success("🎉 Annotation hoàn tất.")
+        # YAML
+        yaml_path = os.path.join(project_dir, run_name, "data.yaml")
+        os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
+        with open(yaml_path, "w") as f:
+            f.write(f"train: {img_dir}\nval: {img_dir}\nnc: 1\nnames: ['BIB']\n")
+        st.write("✅ Created data.yaml")
+
+        if st.button("🚀 Bắt đầu huấn luyện"):
+            with st.spinner("Training..."):
                 st.session_state['model'].train(
-                    data=data_yaml,
+                    data=yaml_path,
                     epochs=epochs,
                     batch=batch_size,
                     imgsz=img_size,
@@ -116,18 +96,8 @@ names: ['BIB']
                     name=run_name,
                     exist_ok=True
                 )
-            st.success("Training completed!")
-            # Download button for trained model
-            weights_path = os.path.join(project_dir, run_name, 'weights', 'best.pt')
-            if os.path.isfile(weights_path):
-                with open(weights_path, 'rb') as wf:
-                    st.download_button(
-                        label="Download fine-tuned model",
-                        data=wf,
-                        file_name=os.path.basename(weights_path),
-                        mime='application/octet-stream'
-                    )
-            else:
-                st.error(f"Weights not found at {weights_path}")
-else:
-    st.info("Nhấn 'Load Model & Images' để bắt đầu annotation.")
+            st.success("✅ Training xong.")
+            best_model = os.path.join(project_dir, run_name, "weights/best.pt")
+            if os.path.isfile(best_model):
+                with open(best_model, "rb") as f:
+                    st.download_button("⬇️ Tải model đã huấn luyện", f, file_name="best.pt")
