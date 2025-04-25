@@ -59,7 +59,7 @@ def annotation_interface():
             # Dự đoán và hiển thị kết quả
             results = st.session_state.model.predict(img_path, conf=0.4)
             annotated_img = results[0].plot()  # Sử dụng built-in plotting
-            st.image(annotated_img, caption=f"Ảnh {idx+1}/{len(st.session_state.image_files)}", use_column_width=True)
+            st.image(annotated_img, caption=f"Ảnh {idx+1}/{len(st.session_state.image_files)}", use_container_width =True)
             
             # Nút điều khiển
             col1, col2 = st.columns(2)
