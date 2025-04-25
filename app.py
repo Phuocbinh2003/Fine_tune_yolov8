@@ -85,12 +85,12 @@ if "image_files" in st.session_state and "model" in st.session_state:
                     xc, yc, w, h = box.xywhn[0].tolist()
                     f.write(f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}\n")
             st.session_state["current_index"] += 1
-            st.experimental_rerun()  # Đây là dòng quan trọng để làm mới giao diện
+            st.rerun()  # Đây là dòng quan trọng để làm mới giao diện
 
         if col2.button("❌ Sai", key=f"no_{idx}"):
             # Chuyển sang ảnh tiếp theo mà không lưu nhãn
             st.session_state["current_index"] += 1
-            st.experimental_rerun()  # Đây cũng là dòng quan trọng để làm mới giao diện
+            st.rerun()  # Đây cũng là dòng quan trọng để làm mới giao diện
 
     else:
         st.success("🎉 Annotation hoàn tất!")
