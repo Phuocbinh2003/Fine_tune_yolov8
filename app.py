@@ -4,7 +4,7 @@ from ultralytics import YOLO
 import cv2
 
 # === CONFIG ===
-UPLOAD_DIR = "./uploads"
+UPLOAD_DIR = "labels"
 IMG_DIR = os.path.join(UPLOAD_DIR, "images")
 LABEL_DIR = os.path.join(UPLOAD_DIR, "labels")
 os.makedirs(IMG_DIR, exist_ok=True)
