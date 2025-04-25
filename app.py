@@ -73,7 +73,7 @@ if "image_files" in st.session_state and "model" in st.session_state:
         # Predict
         result = st.session_state["model"].predict(img_path, conf=0.3)[0]
         annotated_img = draw_boxes(img_path, result)
-        st.image(annotated_img, caption=img_name, use_column_width=True)
+        st.image(annotated_img, caption=img_name, use_container_width =True)
         st.write(f"Image {idx+1} / {len(image_files)}")
 
         col1, col2 = st.columns(2)
