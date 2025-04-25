@@ -90,7 +90,7 @@ def save_labels(results, img_name):
 def next_image():
     """Chuyển sang ảnh tiếp theo"""
     st.session_state.current_index += 1
-    st.experimental_rerun()
+    st.rerun()
 
 # ================= HUẤN LUYỆN =================
 def create_yaml_file():
