@@ -60,6 +60,7 @@ def draw_boxes(img_path, results):
         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+
 # === ANNOTATION ===
 if "image_files" in st.session_state and "model" in st.session_state:
     idx = st.session_state.get("current_index", 0)
@@ -76,6 +77,7 @@ if "image_files" in st.session_state and "model" in st.session_state:
 
         col1, col2 = st.columns(2)
         if col1.button("✅ Đúng", key=f"yes_{idx}"):
+            # Lưu nhãn và chuyển sang ảnh tiếp theo
             label_file = os.path.join(LABEL_DIR, img_name.rsplit(".", 1)[0] + ".txt")
             with open(label_file, "w") as f:
                 for box in result.boxes:
@@ -83,14 +85,16 @@ if "image_files" in st.session_state and "model" in st.session_state:
                     xc, yc, w, h = box.xywhn[0].tolist()
                     f.write(f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}\n")
             st.session_state["current_index"] += 1
-            st.rerun()
+            st.experimental_rerun()  # Đây là dòng quan trọng để làm mới giao diện
 
         if col2.button("❌ Sai", key=f"no_{idx}"):
+            # Chuyển sang ảnh tiếp theo mà không lưu nhãn
             st.session_state["current_index"] += 1
-            st.rerun()
+            st.experimental_rerun()  # Đây cũng là dòng quan trọng để làm mới giao diện
 
     else:
         st.success("🎉 Annotation hoàn tất!")
+
 
         # === TẠO FILE data.yaml ===
         yaml_path = os.path.join(UPLOAD_DIR, "data.yaml")
