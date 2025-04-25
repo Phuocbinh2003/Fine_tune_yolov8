@@ -87,9 +87,11 @@ def save_uploaded_files():
 # ================= TẠO FILE dataset.yaml =================
 def create_yaml_file():
     """Tạo file cấu hình dataset"""
+    # Lấy đường dẫn tuyệt đối đến các thư mục train và val
     abs_train_path = os.path.abspath(TRAIN_DIR)
     abs_val_path = os.path.abspath(VAL_DIR)
 
+    # Tạo file dataset.yaml với đường dẫn tuyệt đối
     yaml_path = os.path.join(UPLOAD_DIR, "dataset.yaml")
     with open(yaml_path, "w") as f:
         f.write(f"""train: {abs_train_path}
