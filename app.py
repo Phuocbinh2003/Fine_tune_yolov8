@@ -23,7 +23,7 @@ st.sidebar.header("⚙️ Cài đặt")
 uploaded_model = st.sidebar.file_uploader("Tải lên model (.pt)", type=["pt"])
 uploaded_images = st.sidebar.file_uploader("Tải lên ảnh", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-# Hyperparameters
+# Hyperparameter
 nc = st.sidebar.number_input("Số lớp", min_value=1, value=1)
 class_names = st.sidebar.text_input("Tên lớp (cách nhau bằng phẩy)", value="BIB")
 epochs = st.sidebar.slider("Epochs", 1, 100, 5)
