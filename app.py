@@ -148,6 +148,8 @@ def offer_model_download():
 
 # ================= MAIN FLOW =================
 if __name__ == "__main__":
+    if "current_index" not in st.session_state:
+        st.session_state.current_index = 0
     save_uploaded_files()
     
     if "model_path" in st.session_state:
