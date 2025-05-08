@@ -1,170 +1,164 @@
 import os
-import cv2
-import streamlit as st
-from ultralytics import YOLO
-import datetime
-import shutil
 import uuid
+import shutil
+import datetime
+import streamlit as st
 from glob import glob
+from ultralytics import YOLO
 
 # ================= CONFIG =================
 UPLOAD_DIR = "temp_data"
 IMG_DIR = os.path.join(UPLOAD_DIR, "images")
 LABEL_DIR = os.path.join(UPLOAD_DIR, "labels")
+TRAIN_IMG_DIR = os.path.join(UPLOAD_DIR, "train_images")
+TRAIN_LABEL_DIR = os.path.join(UPLOAD_DIR, "train_labels")
 PERMANENT_MODEL_DIR = "models"
 
-# Tạo thư mục nếu chưa tồn tại
-os.makedirs(IMG_DIR, exist_ok=True)
-os.makedirs(LABEL_DIR, exist_ok=True)
-os.makedirs(PERMANENT_MODEL_DIR, exist_ok=True)
+# Tạo thư mục
+for d in [IMG_DIR, LABEL_DIR, TRAIN_IMG_DIR, TRAIN_LABEL_DIR, PERMANENT_MODEL_DIR]:
+    os.makedirs(d, exist_ok=True)
 
 st.set_page_config(page_title="YOLOv8 Fine-tune", layout="centered")
-st.title("🧠 YOLOv8 Fine-tuning Tool")
+st.title("🧫 YOLOv8 Fine-tuning Tool")
 
-# ================= SESSION STATE =================
+# ================= SESSION =================
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 if "image_files" not in st.session_state:
     st.session_state.image_files = []
+if "accepted" not in st.session_state:
+    st.session_state.accepted = []
 
 # ================= SIDEBAR =================
 st.sidebar.header("⚙️ Cài đặt")
-
-# Model và ảnh
-duploaded_model = st.sidebar.file_uploader("Tải lên model (.pt)", type=["pt"])
-uploaded_images = st.sidebar.file_uploader("Tải lên ảnh", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
-
-# Thông số fine-tune
-nc = st.sidebar.number_input("Số lớp", min_value=1, value=1)
-class_names = st.sidebar.text_input("Tên lớp (cách nhau bằng phẩy)", value="BIB")
+# Input
+uploaded_model = st.sidebar.file_uploader("Tải lên model (.pt)", type=["pt"])
+uploaded_images = st.sidebar.file_uploader("Tải lên ảnh", type=["jpg","png","jpeg"], accept_multiple_files=True)
+# Hyperparams
+nc = st.sidebar.number_input("Số lớp", 1, 100, 1)
+class_names = st.sidebar.text_input("Tên lớp (phân tách bởi dấu phẩy)", "BIB")
 epochs = st.sidebar.slider("Epochs", 1, 100, 5)
-batch_size = st.sidebar.selectbox("Batch size", [8, 16, 32, 64], index=1)
+batch_size = st.sidebar.selectbox("Batch size", [8,16,32,64], index=1)
 img_size = st.sidebar.number_input("Kích thước ảnh", 320, 1280, 640, step=32)
 conf_thres = st.sidebar.slider("Confidence threshold", 0.0, 1.0, 0.4)
 
-# ================= XỬ LÝ UPLOAD =================
-def save_uploaded_files():
+# ================= UPLOAD HANDLER =================
+def save_uploads():
     if uploaded_model:
-        model_path = os.path.join(UPLOAD_DIR, uploaded_model.name)
-        with open(model_path, "wb") as f:
+        path = os.path.join(UPLOAD_DIR, uploaded_model.name)
+        with open(path, 'wb') as f:
             f.write(uploaded_model.getbuffer())
-        st.session_state.model_path = model_path
-
+        st.session_state.model_path = path
     if uploaded_images:
         for img in uploaded_images:
-            unique_name = f"{uuid.uuid4().hex}_{img.name}"
-            img_path = os.path.join(IMG_DIR, unique_name)
-            with open(img_path, "wb") as f:
+            name = f"{uuid.uuid4().hex}_{img.name}"
+            dest = os.path.join(IMG_DIR, name)
+            with open(dest, 'wb') as f:
                 f.write(img.getbuffer())
-            st.session_state.image_files.append(unique_name)
+            st.session_state.image_files.append(name)
 
-# ================= ANNOTATION =================
-def annotation_interface():
+# ================= ANNOTATION UI =================
+def annotate():
     idx = st.session_state.current_index
-    total = len(st.session_state.image_files)
-
+    files = st.session_state.image_files
+    total = len(files)
     if idx < total:
-        img_name = st.session_state.image_files[idx]
-        img_path = os.path.join(IMG_DIR, img_name)
-
-        st.write(f"**Ảnh {idx+1}/{total}:** {img_name}")
+        fname = files[idx]
+        st.write(f"**Ảnh {idx+1}/{total}:** {fname}")
+        img_path = os.path.join(IMG_DIR, fname)
         try:
             results = st.session_state.model.predict(img_path, conf=conf_thres)
-            annotated = results[0].plot()
-            st.image(annotated, use_container_width=True)
-
-            col1, col2, col3 = st.columns([1,1,1])
-            if col1.button("👍 Chấp nhận", key=f"accept_{idx}"):
-                save_labels(results, img_name)
-                next_image()
-            if col2.button("👎 Bỏ qua", key=f"skip_{idx}"):
-                next_image()
-            if idx > 0 and col3.button("◀️ Quay lại", key=f"back_{idx}"):
-                st.session_state.current_index -= 1
-                st.rerun()
-
+            anno = results[0].plot()
+            st.image(anno, use_container_width=True)
+            c1, c2 = st.columns(2)
+            if c1.button("👍 Chấp nhận", key=f"acc_{idx}"):
+                save_label_and_copy(results, fname)
+                st.session_state.accepted.append(fname)
+                next_img()
+            if c2.button("👎 Bỏ qua", key=f"sk_{idx}"):
+                next_img()
         except Exception as e:
-            st.error(f"Lỗi xử lý ảnh: {e}")
-            next_image()
+            st.error(f"Lỗi: {e}")
+            next_img()
     else:
-        st.success("✅ Hoàn thành gán nhãn!")
-        create_yaml_file()
-        show_train_button()
+        if len(st.session_state.accepted) == 0:
+            st.warning("Không có ảnh nào được chấp nhận để huấn luyện.")
+        else:
+            st.success(f"Hoàn thành! Chọn được {len(st.session_state.accepted)} ảnh để fine-tune.")
+            prepare_dataset()
+            train_button()
 
 
-def save_labels(results, img_name):
-    label_file = os.path.join(LABEL_DIR, os.path.splitext(img_name)[0] + ".txt")
-    os.makedirs(os.path.dirname(label_file), exist_ok=True)
-    with open(label_file, "w") as f:
+def save_label_and_copy(results, fname):
+    # save predicted labels
+    base = os.path.splitext(fname)[0]
+    label_path = os.path.join(TRAIN_LABEL_DIR, base + ".txt")
+    with open(label_path, 'w') as f:
         for box in results[0].boxes:
-            cls = int(box.cls.item())
-            x, y, w, h = box.xywhn[0].tolist()
-            f.write(f"{cls} {x:.5f} {y:.5f} {w:.5f} {h:.5f}\n")
+            c = int(box.cls)
+            x,y,w,h = box.xywhn[0].tolist()
+            f.write(f"{c} {x:.5f} {y:.5f} {w:.5f} {h:.5f}\n")
+    # copy image
+    shutil.copy(os.path.join(IMG_DIR, fname), os.path.join(TRAIN_IMG_DIR, fname))
 
 
-def next_image():
+def next_img():
     st.session_state.current_index += 1
     st.rerun()
 
-# ================= DATASET YAML =================
-def create_yaml_file():
-    yaml_path = os.path.join(UPLOAD_DIR, "dataset.yaml")
-    names_list = [n.strip() for n in class_names.split(',')]
-    with open(yaml_path, "w") as f:
+# ================= DATASET =================
+def prepare_dataset():
+    yaml = os.path.join(UPLOAD_DIR, 'dataset.yaml')
+    names = [n.strip() for n in class_names.split(',')]
+    with open(yaml, 'w') as f:
         f.write(f"path: {os.path.abspath(UPLOAD_DIR)}\n")
-        f.write("train: images\nval: images\n")
-        f.write(f"nc: {nc}\nnames: {names_list}\n")
-    st.session_state.yaml_path = yaml_path
+        f.write("train: train_images\n")
+        f.write("val: train_images\n")
+        f.write(f"nc: {nc}\nnames: {names}\n")
+    st.session_state.yaml = yaml
 
-# ================= TRAINING =================
-def show_train_button():
-    if st.button("🚀 Bắt đầu huấn luyện"):
-        with st.spinner("Đang huấn luyện..."):
+# ================= TRAIN =================
+def train_button():
+    if st.button("🚀 Start Fine-tune", help="Huấn luyện trên ảnh đã chọn"):
+        with st.spinner("Fine-tuning..."):
             try:
                 model = YOLO(st.session_state.model_path)
                 model.train(
-                    data=st.session_state.yaml_path,
+                    data=st.session_state.yaml,
                     epochs=epochs,
                     batch=batch_size,
                     imgsz=img_size,
-                    project="runs",
-                    exist_ok=True
+                    project='runs', exist_ok=True
                 )
-                save_final_model()
-                st.success("Huấn luyện thành công!")
-                offer_model_download()
+                save_final()
+                st.success("Fine-tune hoàn tất!")
+                download()
             except Exception as e:
-                st.error(f"Lỗi huấn luyện: {e}")
+                st.error(f"Lỗi training: {e}")
 
 
-def save_final_model():
-    runs = sorted(glob("runs/exp*/weights/best.pt"), key=os.path.getmtime)
+def save_final():
+    runs = sorted(glob('runs/exp*/weights/best.pt'), key=os.path.getmtime)
     if runs:
-        source = runs[-1]
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = os.path.join(PERMANENT_MODEL_DIR, f"model_{timestamp}.pt")
-        shutil.copy(source, dest)
-        st.session_state.final_model = dest
+        src = runs[-1]
+        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        dst = os.path.join(PERMANENT_MODEL_DIR, f'model_{ts}.pt')
+        shutil.copy(src, dst)
+        st.session_state.final = dst
 
 
-def offer_model_download():
-    with open(st.session_state.final_model, "rb") as f:
-        st.download_button(
-            label="⬇️ Tải model đã huấn luyện",
-            data=f,
-            file_name=os.path.basename(st.session_state.final_model),
-            mime="application/octet-stream"
-        )
+def download():
+    with open(st.session_state.final, 'rb') as f:
+        st.download_button('⬇️ Tải model', data=f, file_name=os.path.basename(st.session_state.final))
 
 # ================= MAIN =================
-if __name__ == "__main__":
-    save_uploaded_files()
-    if "model_path" in st.session_state:
+if __name__ == '__main__':
+    save_uploads()
+    if 'model_path' in st.session_state and st.session_state.image_files:
         try:
             st.session_state.model = YOLO(st.session_state.model_path)
-            if st.session_state.image_files:
-                annotation_interface()
+            annotate()
         except Exception as e:
-            st.error(f"Không thể tải model: {e}")
+            st.error(f"Không thể load model: {e}")
     else:
-        st.info("Vui lòng tải lên model và ảnh để bắt đầu")
+        st.info("Vui lòng tải model và ảnh để bắt đầu.")
